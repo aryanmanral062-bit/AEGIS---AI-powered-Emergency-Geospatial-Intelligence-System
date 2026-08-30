@@ -8,6 +8,8 @@ import { ENTITY_IDS } from '../../data/simulationData';
 const WAYANAD_CENTER: [number, number] = [76.09, 11.56];
 const INITIAL_ZOOM = 11.5;
 
+export type BasemapMode = 'operational' | 'satellite' | 'terrain';
+
 interface GISMapProps {
   routeR104Status?: 'clear' | 'at-risk' | 'blocked';
   activeVectorType?: 'none' | 'plan-v1-vectors' | 'plan-v1-invalidated-vector' | 'plan-v2-vectors';
@@ -258,6 +260,7 @@ export default function GISMap({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>('operational');
   const [layers, setLayers] = useState<LayerVisibility>({
     hazardZones: true,
     habitations: true,
@@ -289,23 +292,61 @@ export default function GISMap({
       localIdeographFontFamily: 'sans-serif',
       style: {
         version: 8,
-        name: 'AEGIS Operational Basemap',
+        name: 'AEGIS Control Room Multi-Basemap Style',
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
-          'osm-tiles': {
+          // 1. Operational Basemap (CartoDB Positron - Clean Institutional Light)
+          'basemap-operational-src': {
             type: 'raster',
             tiles: [
-              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+              'https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+              'https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
             ],
             tileSize: 256,
-            attribution: '&copy; OpenStreetMap contributors | KSDMA GIS',
+            attribution: '&copy; CARTO &copy; OpenStreetMap contributors | KSDMA GIS',
+          },
+          // 2. High-Resolution Satellite Imagery (ESRI World Imagery)
+          'basemap-satellite-src': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            attribution: '&copy; Esri, Maxar, Earthstar Geographics | KSDMA GIS',
+          },
+          // 3. Topographic / Shaded Relief Terrain (ESRI World Topo)
+          'basemap-terrain-src': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            attribution: '&copy; Esri, USGS, NOAA | KSDMA GIS',
           },
         },
         layers: [
           {
-            id: 'osm-tiles-layer',
+            id: 'basemap-operational-layer',
             type: 'raster',
-            source: 'osm-tiles',
+            source: 'basemap-operational-src',
+            layout: { visibility: 'visible' },
+            minzoom: 0,
+            maxzoom: 20,
+          },
+          {
+            id: 'basemap-satellite-layer',
+            type: 'raster',
+            source: 'basemap-satellite-src',
+            layout: { visibility: 'none' },
+            minzoom: 0,
+            maxzoom: 19,
+          },
+          {
+            id: 'basemap-terrain-layer',
+            type: 'raster',
+            source: 'basemap-terrain-src',
+            layout: { visibility: 'none' },
             minzoom: 0,
             maxzoom: 19,
           },
@@ -421,7 +462,7 @@ export default function GISMap({
         paint: {
           'text-color': '#0f172a',
           'text-halo-color': '#ffffff',
-          'text-halo-width': 2.0,
+          'text-halo-width': 2.2,
         },
       });
 
@@ -452,7 +493,7 @@ export default function GISMap({
         paint: {
           'text-color': '#14532d',
           'text-halo-color': '#ffffff',
-          'text-halo-width': 2.0,
+          'text-halo-width': 2.2,
         },
       });
 
@@ -517,6 +558,22 @@ export default function GISMap({
       mapRef.current = null;
     };
   }, []);
+
+  // Update Basemap Visibility on Mode Switch
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    if (map.getLayer('basemap-operational-layer')) {
+      map.setLayoutProperty('basemap-operational-layer', 'visibility', basemapMode === 'operational' ? 'visible' : 'none');
+    }
+    if (map.getLayer('basemap-satellite-layer')) {
+      map.setLayoutProperty('basemap-satellite-layer', 'visibility', basemapMode === 'satellite' ? 'visible' : 'none');
+    }
+    if (map.getLayer('basemap-terrain-layer')) {
+      map.setLayoutProperty('basemap-terrain-layer', 'visibility', basemapMode === 'terrain' ? 'visible' : 'none');
+    }
+  }, [basemapMode]);
 
   // Update Route R104 Color Dynamically on State Change
   useEffect(() => {
@@ -609,12 +666,52 @@ export default function GISMap({
         </div>
       </div>
 
+      {/* Basemap Mode Switcher Control (Top-Center-Right) */}
+      <div className="absolute top-2.5 right-38 z-10 bg-white/95 border border-slate-300 rounded shadow-xs p-0.5 flex items-center gap-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setBasemapMode('operational')}
+          className={`px-2.5 py-1 rounded text-[10.5px] font-bold cursor-pointer transition-colors ${
+            basemapMode === 'operational'
+              ? 'bg-navy-900 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Clean Operational Basemap (Roads, Settlements & Corridor Focus)"
+        >
+          OPERATIONAL
+        </button>
+        <button
+          type="button"
+          onClick={() => setBasemapMode('satellite')}
+          className={`px-2.5 py-1 rounded text-[10.5px] font-bold cursor-pointer transition-colors ${
+            basemapMode === 'satellite'
+              ? 'bg-navy-900 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="High-Resolution Satellite Imagery (Physical Terrain & Slope Detail)"
+        >
+          SATELLITE
+        </button>
+        <button
+          type="button"
+          onClick={() => setBasemapMode('terrain')}
+          className={`px-2.5 py-1 rounded text-[10.5px] font-bold cursor-pointer transition-colors ${
+            basemapMode === 'terrain'
+              ? 'bg-navy-900 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Topographic Shaded Relief (Valleys, Elevations & Contours)"
+        >
+          TERRAIN
+        </button>
+      </div>
+
       {/* Map Reset & Spatial Focus Button (Top-Right) */}
       <div className="absolute top-2.5 right-12 z-10">
         <button
           type="button"
           onClick={handleResetFocus}
-          className="px-2.5 py-1 text-[11px] font-bold bg-white/95 border border-slate-300 rounded shadow-xs text-slate-800 hover:bg-slate-50 flex items-center gap-1.5"
+          className="px-2.5 py-1 text-[11px] font-bold bg-white/95 border border-slate-300 rounded shadow-xs text-slate-800 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
           title="Reset map view to Wayanad focus area"
         >
           <span>⌖</span> Focus Wayanad
@@ -623,7 +720,7 @@ export default function GISMap({
 
       {/* Movement Vector Overlay Status Banner (Top Center) */}
       {activeVectorType !== 'none' && (
-        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 bg-white/95 border border-slate-300 rounded px-3 py-1 shadow-sm text-xs font-bold z-10 flex items-center gap-2">
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/95 border border-slate-300 rounded px-3 py-1 shadow-sm text-xs font-bold z-10 flex items-center gap-2">
           {activeVectorType === 'plan-v1-vectors' && (
             <span className="text-emerald-900 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
@@ -647,8 +744,9 @@ export default function GISMap({
 
       {/* Operational Map Legend (Bottom-Left) */}
       <div className="absolute bottom-2.5 left-2.5 bg-white/95 border border-slate-300 rounded p-2 shadow-xs text-xs z-10 max-w-[280px]">
-        <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-          Operational Symbology
+        <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center justify-between">
+          <span>Operational Symbology</span>
+          <span className="text-[8.5px] font-mono-code text-slate-400 uppercase">{basemapMode}</span>
         </div>
         <div className="grid grid-cols-2 gap-x-2.5 gap-y-0.5 text-[10px] text-slate-800 font-medium">
           <div className="flex items-center gap-1.5">
