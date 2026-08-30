@@ -15,7 +15,7 @@ interface GISMapProps {
   activeVectorType?: 'none' | 'plan-v1-vectors' | 'plan-v1-invalidated-vector' | 'plan-v2-vectors';
 }
 
-// Spatial Datasets with Stable Entity IDs
+// 1. Hazard Zones Dataset
 const hazardZones: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -79,6 +79,7 @@ const hazardZones: FeatureCollection = {
   ],
 };
 
+// 2. Vulnerable Habitations Dataset
 const habitations: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -133,6 +134,7 @@ const habitations: FeatureCollection = {
   ],
 };
 
+// 3. Relief Shelters Dataset
 const shelters: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -181,6 +183,7 @@ const shelters: FeatureCollection = {
   ],
 };
 
+// 4. Evacuation Routes Dataset
 const routes: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -244,13 +247,139 @@ const routes: FeatureCollection = {
   ],
 };
 
+// 5. Movement Vectors by Plan Version
+const movementVectorsV1: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v1-meppadi',
+        name: 'Plan V1 Corridor: Mundakkai → Meppadi HSS (612 evacuees)',
+        color: '#15803d',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.128, 11.556]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v1-kalpetta',
+        name: 'Plan V1 Corridor: Mundakkai → Kalpetta Hall (503 evacuees)',
+        color: '#15803d',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.115, 11.570], [76.083, 11.608]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v1-vythiri',
+        name: "Plan V1 Corridor: Mundakkai → St. Mary's Vythiri (380 evacuees)",
+        color: '#15803d',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.085, 11.535], [76.042, 11.551]],
+      },
+    },
+  ],
+};
+
+const movementVectorsInvalidated: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-inv-r104',
+        name: 'SEVERED CORRIDOR: R104 Failure (150 evacuees blocked)',
+        color: '#b91c1c',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.125, 11.530]],
+      },
+    },
+  ],
+};
+
+const movementVectorsV2: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v2-kalpetta',
+        name: 'Plan V2 PRIMARY: Mundakkai → Kalpetta Hall (612 evacuees via R212)',
+        color: '#1d4ed8',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.110, 11.525], [76.115, 11.570], [76.083, 11.608]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v2-vythiri',
+        name: "Plan V2 SECONDARY: Mundakkai → St. Mary's Vythiri (503 evacuees via R318)",
+        color: '#1d4ed8',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.138, 11.535], [76.085, 11.535], [76.042, 11.551]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'vec-v2-meppadi',
+        name: 'Plan V2 LOCAL: Meppadi HSS (380 evacuees local bypass)',
+        color: '#1d4ed8',
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[76.126, 11.554], [76.128, 11.556]],
+      },
+    },
+  ],
+};
+
+// 6. Breach Incident Point (S6 Bridge Failure)
+const breachIncidentPoint: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {
+        id: 'breach-point-km42',
+        name: 'R104 CULVERT BREACH (KM 4.2)',
+        status: 'IMPASSABLE',
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [76.125, 11.530],
+      },
+    },
+  ],
+};
+
+const emptyFeatureCollection: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [],
+};
+
 interface LayerVisibility {
   hazardZones: boolean;
   habitations: boolean;
   shelters: boolean;
   roads: boolean;
   movementVectors: boolean;
-  medical: boolean;
 }
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY || 'dZNg3PV7atbgQYnGmPIl';
@@ -285,7 +414,6 @@ export default function GISMap({
     shelters: true,
     roads: true,
     movementVectors: true,
-    medical: false,
   });
 
   const toggleLayer = (layerKey: keyof LayerVisibility) => {
@@ -302,6 +430,14 @@ export default function GISMap({
     }
   };
 
+  // Helper to determine active vector GeoJSON
+  const getActiveVectorData = (type: GISMapProps['activeVectorType']): FeatureCollection => {
+    if (type === 'plan-v1-vectors') return movementVectorsV1;
+    if (type === 'plan-v1-invalidated-vector') return movementVectorsInvalidated;
+    if (type === 'plan-v2-vectors') return movementVectorsV2;
+    return emptyFeatureCollection;
+  };
+
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
@@ -313,21 +449,18 @@ export default function GISMap({
         name: 'AEGIS Control Room Multi-Basemap Style',
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
-          // 1. Operational Basemap (MapTiler Dataviz / CartoDB Positron)
           'basemap-operational-src': {
             type: 'raster',
             tiles: OPERATIONAL_TILES,
             tileSize: 256,
             attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
           },
-          // 2. High-Resolution Satellite Imagery (MapTiler Satellite / ESRI)
           'basemap-satellite-src': {
             type: 'raster',
             tiles: SATELLITE_TILES,
             tileSize: 256,
             attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
           },
-          // 3. Topographic / Shaded Relief Terrain (MapTiler Topo / ESRI)
           'basemap-terrain-src': {
             type: 'raster',
             tiles: TERRAIN_TILES,
@@ -372,142 +505,226 @@ export default function GISMap({
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 160, unit: 'metric' }), 'bottom-left');
 
     map.on('load', () => {
-      // 1. Hazard Zones Layer
-      map.addSource('hazard-zones-src', { type: 'geojson', data: hazardZones });
-      map.addLayer({
-        id: 'hazard-zones-fill',
-        type: 'fill',
-        source: 'hazard-zones-src',
-        paint: {
-          'fill-color': [
-            'match', ['get', 'severity'],
-            'critical', 'rgba(185, 28, 28, 0.32)',
-            'high', 'rgba(194, 65, 12, 0.26)',
-            'rgba(161, 98, 7, 0.20)',
-          ],
-        },
-      });
-      map.addLayer({
-        id: 'hazard-zones-line',
-        type: 'line',
-        source: 'hazard-zones-src',
-        paint: {
-          'line-color': [
-            'match', ['get', 'severity'],
-            'critical', '#991b1b',
-            'high', '#c2410c',
-            '#a16207',
-          ],
-          'line-width': 2.2,
-          'line-dasharray': [4, 2],
-        },
-      });
+      // -------------------------------------------------------------
+      // 1. HAZARD ZONES (Polygons + Outlines + Labels)
+      // -------------------------------------------------------------
+      if (!map.getSource('hazard-zones-src')) {
+        map.addSource('hazard-zones-src', { type: 'geojson', data: hazardZones });
+      }
+      if (!map.getLayer('hazard-zones-fill')) {
+        map.addLayer({
+          id: 'hazard-zones-fill',
+          type: 'fill',
+          source: 'hazard-zones-src',
+          paint: {
+            'fill-color': [
+              'match', ['get', 'severity'],
+              'critical', 'rgba(185, 28, 28, 0.35)',
+              'high', 'rgba(194, 65, 12, 0.28)',
+              'rgba(161, 98, 7, 0.22)',
+            ],
+          },
+        });
+      }
+      if (!map.getLayer('hazard-zones-line')) {
+        map.addLayer({
+          id: 'hazard-zones-line',
+          type: 'line',
+          source: 'hazard-zones-src',
+          paint: {
+            'line-color': [
+              'match', ['get', 'severity'],
+              'critical', '#991b1b',
+              'high', '#c2410c',
+              '#a16207',
+            ],
+            'line-width': 2.4,
+          },
+        });
+      }
 
-      // 2. Road Network Layer (Dynamically updated via props)
-      map.addSource('routes-src', { type: 'geojson', data: routes });
-      map.addLayer({
-        id: 'routes-line',
-        type: 'line',
-        source: 'routes-src',
-        paint: {
-          'line-color': [
-            'case',
-            ['get', 'isR104'],
-            routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
-            '#0f294a',
-          ],
-          'line-width': [
-            'case',
-            ['get', 'isR104'],
-            routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 2.8,
-            2.8,
-          ],
-          'line-dasharray': [
-            'case',
-            ['get', 'isR104'],
-            routeR104Status === 'blocked'
-              ? ['literal', [2, 1]]
-              : routeR104Status === 'at-risk'
-              ? ['literal', [4, 2]]
-              : ['literal', [1, 0]],
-            ['literal', [1, 0]],
-          ] as any,
-        },
-      });
+      // -------------------------------------------------------------
+      // 2. EVACUATION ROUTES (R104, R212, R318)
+      // -------------------------------------------------------------
+      if (!map.getSource('routes-src')) {
+        map.addSource('routes-src', { type: 'geojson', data: routes });
+      }
+      if (!map.getLayer('routes-line')) {
+        map.addLayer({
+          id: 'routes-line',
+          type: 'line',
+          source: 'routes-src',
+          paint: {
+            'line-color': [
+              'case',
+              ['get', 'isR104'],
+              routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
+              '#0f294a',
+            ],
+            'line-width': [
+              'case',
+              ['get', 'isR104'],
+              routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 3.0,
+              3.0,
+            ],
+          },
+        });
+      }
 
-      // 3. Vulnerable Habitations Layer
-      map.addSource('habitations-src', { type: 'geojson', data: habitations });
-      map.addLayer({
-        id: 'habitations-circle',
-        type: 'circle',
-        source: 'habitations-src',
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['get', 'households'],
-            80, 8,
-            200, 11,
-            400, 14,
-          ],
-          'circle-color': [
-            'match', ['get', 'risk'],
-            'critical', '#b91c1c',
-            'high', '#c2410c',
-            '#a16207',
-          ],
-          'circle-opacity': 0.95,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2.0,
-        },
-      });
-      map.addLayer({
-        id: 'habitations-label',
-        type: 'symbol',
-        source: 'habitations-src',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 11,
-          'text-offset': [0, -1.6],
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': '#0f172a',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.2,
-        },
-      });
+      // -------------------------------------------------------------
+      // 3. MOVEMENT VECTORS (Simulation S5, S6/S7, S9/S10)
+      // -------------------------------------------------------------
+      if (!map.getSource('movement-vectors-src')) {
+        map.addSource('movement-vectors-src', {
+          type: 'geojson',
+          data: getActiveVectorData(activeVectorType),
+        });
+      }
+      if (!map.getLayer('movement-vectors-line')) {
+        map.addLayer({
+          id: 'movement-vectors-line',
+          type: 'line',
+          source: 'movement-vectors-src',
+          paint: {
+            'line-color': ['coalesce', ['get', 'color'], '#15803d'],
+            'line-width': 3.6,
+          },
+        });
+      }
 
-      // 4. Shelters Layer
-      map.addSource('shelters-src', { type: 'geojson', data: shelters });
-      map.addLayer({
-        id: 'shelters-circle',
-        type: 'circle',
-        source: 'shelters-src',
-        paint: {
-          'circle-radius': 11,
-          'circle-color': '#166534',
-          'circle-opacity': 0.95,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2.2,
-        },
-      });
-      map.addLayer({
-        id: 'shelters-label',
-        type: 'symbol',
-        source: 'shelters-src',
-        layout: {
-          'text-field': ['concat', 'SHELTER: ', ['get', 'name']],
-          'text-size': 10,
-          'text-offset': [0, 1.7],
-          'text-font': ['Noto Sans Regular'],
-        },
-        paint: {
-          'text-color': '#14532d',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.2,
-        },
-      });
+      // -------------------------------------------------------------
+      // 4. S6 BREACH INCIDENT MARKER (KM 4.2 Bridge Culvert Collapse)
+      // -------------------------------------------------------------
+      if (!map.getSource('breach-incident-src')) {
+        map.addSource('breach-incident-src', {
+          type: 'geojson',
+          data: breachIncidentPoint,
+        });
+      }
+      if (!map.getLayer('breach-incident-circle')) {
+        map.addLayer({
+          id: 'breach-incident-circle',
+          type: 'circle',
+          source: 'breach-incident-src',
+          layout: {
+            visibility: routeR104Status === 'blocked' ? 'visible' : 'none',
+          },
+          paint: {
+            'circle-radius': 12,
+            'circle-color': '#dc2626',
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 3,
+          },
+        });
+      }
+      if (!map.getLayer('breach-incident-label')) {
+        map.addLayer({
+          id: 'breach-incident-label',
+          type: 'symbol',
+          source: 'breach-incident-src',
+          layout: {
+            visibility: routeR104Status === 'blocked' ? 'visible' : 'none',
+            'text-field': '⚠ R104 BRIDGE BREACH (KM 4.2)',
+            'text-size': 10.5,
+            'text-offset': [0, -1.8],
+          },
+          paint: {
+            'text-color': '#991b1b',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 3,
+          },
+        });
+      }
 
-      // Interactive Click Popups
+      // -------------------------------------------------------------
+      // 5. VULNERABLE HABITATIONS (Mundakkai, Chooralmala, Attamala, Meppadi)
+      // -------------------------------------------------------------
+      if (!map.getSource('habitations-src')) {
+        map.addSource('habitations-src', { type: 'geojson', data: habitations });
+      }
+      if (!map.getLayer('habitations-circle')) {
+        map.addLayer({
+          id: 'habitations-circle',
+          type: 'circle',
+          source: 'habitations-src',
+          paint: {
+            'circle-radius': [
+              'interpolate', ['linear'], ['get', 'households'],
+              80, 8,
+              200, 11,
+              400, 14,
+            ],
+            'circle-color': [
+              'match', ['get', 'risk'],
+              'critical', '#b91c1c',
+              'high', '#c2410c',
+              '#a16207',
+            ],
+            'circle-opacity': 0.95,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2.5,
+          },
+        });
+      }
+      if (!map.getLayer('habitations-label')) {
+        map.addLayer({
+          id: 'habitations-label',
+          type: 'symbol',
+          source: 'habitations-src',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 11,
+            'text-offset': [0, -1.7],
+          },
+          paint: {
+            'text-color': '#0f172a',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 2.5,
+          },
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 6. RELIEF SHELTERS (Meppadi HSS, Kalpetta Hall, St. Mary's Vythiri)
+      // -------------------------------------------------------------
+      if (!map.getSource('shelters-src')) {
+        map.addSource('shelters-src', { type: 'geojson', data: shelters });
+      }
+      if (!map.getLayer('shelters-circle')) {
+        map.addLayer({
+          id: 'shelters-circle',
+          type: 'circle',
+          source: 'shelters-src',
+          paint: {
+            'circle-radius': 11,
+            'circle-color': '#166534',
+            'circle-opacity': 0.95,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2.5,
+          },
+        });
+      }
+      if (!map.getLayer('shelters-label')) {
+        map.addLayer({
+          id: 'shelters-label',
+          type: 'symbol',
+          source: 'shelters-src',
+          layout: {
+            'text-field': ['concat', 'SHELTER: ', ['get', 'name']],
+            'text-size': 10,
+            'text-offset': [0, 1.8],
+          },
+          paint: {
+            'text-color': '#14532d',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 2.5,
+          },
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 7. INTERACTIVE CLICK POPUPS & HOVER STATES
+      // -------------------------------------------------------------
       map.on('click', 'routes-line', (e: maplibregl.MapLayerMouseEvent) => {
         if (!e.features?.[0]) return;
         const p = e.features[0].properties;
@@ -540,7 +757,61 @@ export default function GISMap({
           .addTo(map);
       });
 
-      const interactiveLayers = ['hazard-zones-fill', 'habitations-circle', 'shelters-circle', 'routes-line'];
+      map.on('click', 'habitations-circle', (e: maplibregl.MapLayerMouseEvent) => {
+        if (!e.features?.[0]) return;
+        const p = e.features[0].properties;
+        new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.4;">
+              <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#b91c1c;text-transform:uppercase;margin-bottom:2px;">
+                HABITATION DEMOGRAPHICS
+              </div>
+              <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+                ${p?.name}
+              </div>
+              <div style="font-size:11px;margin-bottom:2px;">
+                <span style="color:#64748b;">Households:</span> <strong>${p?.households}</strong>
+              </div>
+              <div style="font-size:11px;margin-bottom:2px;">
+                <span style="color:#64748b;">Population Exposed:</span> <strong>${p?.population} persons</strong>
+              </div>
+              <div style="font-size:11px;margin-top:4px;color:#b91c1c;font-weight:bold;">
+                Exposure Category: ${p?.exposure}
+              </div>
+            </div>
+          `)
+          .addTo(map);
+      });
+
+      map.on('click', 'shelters-circle', (e: maplibregl.MapLayerMouseEvent) => {
+        if (!e.features?.[0]) return;
+        const p = e.features[0].properties;
+        new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.4;">
+              <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#166534;text-transform:uppercase;margin-bottom:2px;">
+                DESIGNATED RELIEF SHELTER
+              </div>
+              <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+                ${p?.name}
+              </div>
+              <div style="font-size:11px;margin-bottom:2px;">
+                <span style="color:#64748b;">Usable Bed Capacity:</span> <strong>${p?.capacity} beds</strong>
+              </div>
+              <div style="font-size:11px;margin-bottom:2px;">
+                <span style="color:#64748b;">Route Viability:</span> <strong>${p?.routeViability}</strong>
+              </div>
+              <div style="font-size:10px;color:#64748b;margin-top:4px;border-top:1px solid #e2e8f0;padding-top:2px;">
+                ${p?.medicalAvailability}
+              </div>
+            </div>
+          `)
+          .addTo(map);
+      });
+
+      const interactiveLayers = ['hazard-zones-fill', 'habitations-circle', 'shelters-circle', 'routes-line', 'breach-incident-circle'];
       for (const layer of interactiveLayers) {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
@@ -569,7 +840,7 @@ export default function GISMap({
     };
   }, []);
 
-  // Update Basemap Visibility on Mode Switch
+  // Update Basemap Visibility on Mode Switch (Zero style reload, zero overlay loss)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -585,27 +856,47 @@ export default function GISMap({
     }
   }, [basemapMode]);
 
-  // Update Route R104 Color Dynamically on State Change
+  // Update Route R104 Color & Breach Marker Dynamically on State Change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !map.getLayer('routes-line')) return;
+    if (!map || !map.isStyleLoaded()) return;
 
-    map.setPaintProperty('routes-line', 'line-color', [
-      'case',
-      ['get', 'isR104'],
-      routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
-      '#0f294a',
-    ]);
+    if (map.getLayer('routes-line')) {
+      map.setPaintProperty('routes-line', 'line-color', [
+        'case',
+        ['get', 'isR104'],
+        routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
+        '#0f294a',
+      ]);
 
-    map.setPaintProperty('routes-line', 'line-width', [
-      'case',
-      ['get', 'isR104'],
-      routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 2.8,
-      2.8,
-    ]);
+      map.setPaintProperty('routes-line', 'line-width', [
+        'case',
+        ['get', 'isR104'],
+        routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 3.0,
+        3.0,
+      ]);
+    }
+
+    if (map.getLayer('breach-incident-circle')) {
+      map.setLayoutProperty('breach-incident-circle', 'visibility', routeR104Status === 'blocked' ? 'visible' : 'none');
+    }
+    if (map.getLayer('breach-incident-label')) {
+      map.setLayoutProperty('breach-incident-label', 'visibility', routeR104Status === 'blocked' ? 'visible' : 'none');
+    }
   }, [routeR104Status]);
 
-  // Sync Layer Visibility
+  // Update Movement Vector Data Dynamically when Simulation State changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const vectorSrc = map.getSource('movement-vectors-src') as maplibregl.GeoJSONSource | undefined;
+    if (vectorSrc) {
+      vectorSrc.setData(getActiveVectorData(activeVectorType));
+    }
+  }, [activeVectorType]);
+
+  // Sync Layer Visibility Checkboxes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -624,6 +915,9 @@ export default function GISMap({
     }
     if (map.getLayer('routes-line')) {
       map.setLayoutProperty('routes-line', 'visibility', layers.roads ? 'visible' : 'none');
+    }
+    if (map.getLayer('movement-vectors-line')) {
+      map.setLayoutProperty('movement-vectors-line', 'visibility', layers.movementVectors ? 'visible' : 'none');
     }
   }, [layers]);
 
@@ -672,6 +966,15 @@ export default function GISMap({
               className="accent-navy-800"
             />
             <span>Road Network</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-slate-800 hover:text-slate-950 text-[11px]">
+            <input
+              type="checkbox"
+              checked={layers.movementVectors}
+              onChange={() => toggleLayer('movementVectors')}
+              className="accent-navy-800"
+            />
+            <span>Movement Vectors</span>
           </label>
         </div>
       </div>
