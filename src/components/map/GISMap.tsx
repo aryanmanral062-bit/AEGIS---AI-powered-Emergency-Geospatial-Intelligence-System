@@ -253,6 +253,24 @@ interface LayerVisibility {
   medical: boolean;
 }
 
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY || 'dZNg3PV7atbgQYnGmPIl';
+
+const OPERATIONAL_TILES = MAPTILER_KEY
+  ? [`https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`]
+  : [
+      'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+      'https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+      'https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+    ];
+
+const SATELLITE_TILES = MAPTILER_KEY
+  ? [`https://api.maptiler.com/maps/satellite/256/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`]
+  : ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'];
+
+const TERRAIN_TILES = MAPTILER_KEY
+  ? [`https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`]
+  : ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'];
+
 export default function GISMap({
   routeR104Status = 'at-risk',
   activeVectorType = 'none',
@@ -295,34 +313,26 @@ export default function GISMap({
         name: 'AEGIS Control Room Multi-Basemap Style',
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
-          // 1. Operational Basemap (CartoDB Positron - Clean Institutional Light)
+          // 1. Operational Basemap (MapTiler Dataviz / CartoDB Positron)
           'basemap-operational-src': {
             type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-              'https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-            ],
+            tiles: OPERATIONAL_TILES,
             tileSize: 256,
-            attribution: '&copy; CARTO &copy; OpenStreetMap contributors | KSDMA GIS',
+            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
           },
-          // 2. High-Resolution Satellite Imagery (ESRI World Imagery)
+          // 2. High-Resolution Satellite Imagery (MapTiler Satellite / ESRI)
           'basemap-satellite-src': {
             type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ],
+            tiles: SATELLITE_TILES,
             tileSize: 256,
-            attribution: '&copy; Esri, Maxar, Earthstar Geographics | KSDMA GIS',
+            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
           },
-          // 3. Topographic / Shaded Relief Terrain (ESRI World Topo)
+          // 3. Topographic / Shaded Relief Terrain (MapTiler Topo / ESRI)
           'basemap-terrain-src': {
             type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-            ],
+            tiles: TERRAIN_TILES,
             tileSize: 256,
-            attribution: '&copy; Esri, USGS, NOAA | KSDMA GIS',
+            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
           },
         },
         layers: [
