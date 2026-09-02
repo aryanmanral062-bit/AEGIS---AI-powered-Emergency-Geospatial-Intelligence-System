@@ -1,12 +1,33 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as maplibregl from 'maplibre-gl';
-import type { FeatureCollection } from 'geojson';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { ENTITY_IDS } from '../../data/simulationData';
+import L from 'leaflet';
+import type { FeatureCollection, Feature } from 'geojson';
+import 'leaflet/dist/leaflet.css';
+import {
+  hazardZonesGeoJSON,
+} from '../../data/gis/hazardsData';
+import {
+  habitationsGeoJSON,
+} from '../../data/gis/habitationsData';
+import {
+  sheltersGeoJSON,
+} from '../../data/gis/sheltersData';
+import {
+  roadsGeoJSON,
+} from '../../data/gis/roadsData';
+import {
+  movementVectorsV1GeoJSON,
+  movementVectorsInvalidatedGeoJSON,
+  movementVectorsV2GeoJSON,
+  bridgeBreachIncidentGeoJSON,
+} from '../../data/gis/movementVectorsData';
 
-// Geographically calibrated Wayanad coordinates
-const WAYANAD_CENTER: [number, number] = [76.09, 11.56];
-const INITIAL_ZOOM = 11.5;
+// Geographically calibrated Wayanad coordinates (Lat, Lng for Leaflet)
+const WAYANAD_CENTER: [number, number] = [11.545, 76.115]; // Mundakkai-Meppadi corridor
+const INITIAL_ZOOM = 12;
+const WAYANAD_BOUNDS = L.latLngBounds(
+  [11.490, 76.020], // Southwest
+  [11.620, 76.170]  // Northeast
+);
 
 export type BasemapMode = 'operational' | 'satellite' | 'terrain';
 
@@ -14,369 +35,6 @@ interface GISMapProps {
   routeR104Status?: 'clear' | 'at-risk' | 'blocked';
   activeVectorType?: 'none' | 'plan-v1-vectors' | 'plan-v1-invalidated-vector' | 'plan-v2-vectors';
 }
-
-// ---------------------------------------------------------------------------
-// CANONICAL AEGIS SPATIAL DATASETS (Wayanad Disaster Response Corridor)
-// ---------------------------------------------------------------------------
-
-// 1. Hazard Zones Dataset
-const hazardZones: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'hz-mundakkai',
-        name: 'Mundakkai Landslide Susceptibility Zone',
-        risk: 'CRITICAL',
-        severity: 'critical',
-        drivers: 'Steep hill slope saturation (94.2%) · 24h Rainfall accumulation >204mm · Debris flow corridor',
-        source: 'GSI Hazard Atlas / IMD Doppler Telemetry',
-        status: 'DEMO / SIMULATION DATA',
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [76.120, 11.545], [76.155, 11.550], [76.160, 11.520],
-          [76.140, 11.510], [76.115, 11.520], [76.120, 11.545],
-        ]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'hz-chooralmala',
-        name: 'Chooralmala High Slope Zone',
-        risk: 'HIGH',
-        severity: 'high',
-        drivers: 'Slope instability · Proximity to hill stream · Soil moisture threshold breach',
-        source: 'KSDMA Spatial Registry / IMD',
-        status: 'DEMO / SIMULATION DATA',
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [76.095, 11.535], [76.120, 11.545], [76.125, 11.515],
-          [76.090, 11.510], [76.095, 11.535],
-        ]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'hz-meppadi',
-        name: 'Meppadi Lowland Flood Buffer',
-        risk: 'WARNING',
-        severity: 'warning',
-        drivers: 'River level at warning threshold · Surface runoff accumulation basin',
-        source: 'CWC Hydrological Model',
-        status: 'DEMO / SIMULATION DATA',
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [76.115, 11.565], [76.145, 11.570], [76.150, 11.545],
-          [76.120, 11.545], [76.115, 11.565],
-        ]],
-      },
-    },
-  ],
-};
-
-// 2. Vulnerable Habitations Dataset
-const habitations: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.HABITATIONS.MUNDAKKAI,
-        name: 'Mundakkai',
-        households: 427,
-        population: 1495,
-        exposure: 'CRITICAL',
-        risk: 'critical',
-      },
-      geometry: { type: 'Point', coordinates: [76.138, 11.535] },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.HABITATIONS.CHOORALMALA,
-        name: 'Chooralmala',
-        households: 312,
-        population: 1090,
-        exposure: 'HIGH',
-        risk: 'high',
-      },
-      geometry: { type: 'Point', coordinates: [76.110, 11.525] },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.HABITATIONS.ATTAMALA,
-        name: 'Attamala',
-        households: 156,
-        population: 546,
-        exposure: 'WARNING',
-        risk: 'warning',
-      },
-      geometry: { type: 'Point', coordinates: [76.148, 11.518] },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.HABITATIONS.MEPPADI,
-        name: 'Meppadi Town Habitation',
-        households: 89,
-        population: 312,
-        exposure: 'MODERATE',
-        risk: 'warning',
-      },
-      geometry: { type: 'Point', coordinates: [76.126, 11.554] },
-    },
-  ],
-};
-
-// 3. Relief Shelters Dataset
-const shelters: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.SHELTERS.MEPPADI_HSS,
-        name: 'Meppadi Govt. HSS',
-        type: 'Government School',
-        capacity: 800,
-        occupancy: 45,
-        remainingCapacity: 755,
-        routeViability: 'Route R104 dependency',
-        medicalAvailability: 'Primary Health Desk On-site',
-      },
-      geometry: { type: 'Point', coordinates: [76.128, 11.556] },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.SHELTERS.KALPETTA_HALL,
-        name: 'Kalpetta Community Hall',
-        type: 'Community Hall',
-        capacity: 650,
-        occupancy: 22,
-        remainingCapacity: 628,
-        routeViability: 'Route R212 (Clear ✓)',
-        medicalAvailability: 'District Hospital Linkage (1.5 km)',
-      },
-      geometry: { type: 'Point', coordinates: [76.083, 11.608] },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.SHELTERS.ST_MARYS,
-        name: "St. Mary's School Vythiri",
-        type: 'Aided School',
-        capacity: 500,
-        occupancy: 0,
-        remainingCapacity: 500,
-        routeViability: 'Route R318 (Clear ✓)',
-        medicalAvailability: 'Standby Medical Officer Assigned',
-      },
-      geometry: { type: 'Point', coordinates: [76.042, 11.551] },
-    },
-  ],
-};
-
-// 4. Evacuation Routes Dataset
-const routes: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.ROUTES.R104,
-        name: 'Route R104 (Mundakkai-Meppadi)',
-        status: 'AT RISK',
-        affectedPopulation: '150 households / 525 persons',
-        lastVerification: '2h 17m ago (Stale)',
-        source: 'Field Officer (Vythiri)',
-        isR104: true,
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [76.138, 11.535], [76.125, 11.530], [76.110, 11.525],
-          [76.118, 11.540], [76.128, 11.556]
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.ROUTES.R212,
-        name: 'Route R212 (Meppadi-Kalpetta Arterial)',
-        status: 'CLEAR',
-        affectedPopulation: '0',
-        lastVerification: '25 min ago',
-        source: 'PWD Roads Division',
-        isR104: false,
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [76.128, 11.556], [76.115, 11.570], [76.100, 11.585],
-          [76.090, 11.598], [76.083, 11.608]
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: ENTITY_IDS.ROUTES.R318,
-        name: 'Route R318 (Chooralmala-Vythiri Bypass)',
-        status: 'CLEAR',
-        affectedPopulation: '0',
-        lastVerification: '40 min ago',
-        source: 'Taluk Revenue Squad',
-        isR104: false,
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [76.110, 11.525], [76.085, 11.535], [76.065, 11.542],
-          [76.042, 11.551]
-        ],
-      },
-    },
-  ],
-};
-
-// 5. Movement Vectors by Plan Version
-const movementVectorsV1: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v1-meppadi',
-        name: 'Plan V1 Corridor: Mundakkai → Meppadi HSS (612 evacuees)',
-        color: '#15803d',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.128, 11.556]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v1-kalpetta',
-        name: 'Plan V1 Corridor: Mundakkai → Kalpetta Hall (503 evacuees)',
-        color: '#15803d',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.115, 11.570], [76.083, 11.608]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v1-vythiri',
-        name: "Plan V1 Corridor: Mundakkai → St. Mary's Vythiri (380 evacuees)",
-        color: '#15803d',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.085, 11.535], [76.042, 11.551]],
-      },
-    },
-  ],
-};
-
-const movementVectorsInvalidated: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-inv-r104',
-        name: 'SEVERED CORRIDOR: R104 Failure (150 evacuees blocked)',
-        color: '#b91c1c',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.125, 11.530]],
-      },
-    },
-  ],
-};
-
-const movementVectorsV2: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v2-kalpetta',
-        name: 'Plan V2 PRIMARY: Mundakkai → Kalpetta Hall (612 evacuees via R212)',
-        color: '#1d4ed8',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.110, 11.525], [76.115, 11.570], [76.083, 11.608]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v2-vythiri',
-        name: "Plan V2 SECONDARY: Mundakkai → St. Mary's Vythiri (503 evacuees via R318)",
-        color: '#1d4ed8',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.138, 11.535], [76.085, 11.535], [76.042, 11.551]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'vec-v2-meppadi',
-        name: 'Plan V2 LOCAL: Meppadi HSS (380 evacuees local bypass)',
-        color: '#1d4ed8',
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[76.126, 11.554], [76.128, 11.556]],
-      },
-    },
-  ],
-};
-
-// 6. Breach Incident Point (S6 Bridge Failure)
-const breachIncidentPoint: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'breach-point-km42',
-        name: 'R104 CULVERT BREACH (KM 4.2)',
-        status: 'IMPASSABLE',
-      },
-      geometry: {
-        type: 'Point',
-        coordinates: [76.125, 11.530],
-      },
-    },
-  ],
-};
-
-const emptyFeatureCollection: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [],
-};
 
 interface LayerVisibility {
   hazardZones: boolean;
@@ -386,30 +44,28 @@ interface LayerVisibility {
   movementVectors: boolean;
 }
 
-const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY || 'dZNg3PV7atbgQYnGmPIl';
-
-const OPERATIONAL_TILES = MAPTILER_KEY
-  ? [`https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`]
-  : [
-      'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-      'https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-      'https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
-    ];
-
-const SATELLITE_TILES = MAPTILER_KEY
-  ? [`https://api.maptiler.com/maps/satellite/256/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`]
-  : ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'];
-
-const TERRAIN_TILES = MAPTILER_KEY
-  ? [`https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`]
-  : ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'];
+interface SpatialFocusInfo {
+  title: string;
+  subtitle: string;
+  status: string;
+  statusColor: string;
+}
 
 export default function GISMap({
   routeR104Status = 'at-risk',
   activeVectorType = 'none',
 }: GISMapProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+
+  // Layer groups to manage dynamic toggling without full re-renders
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const hazardLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
+  const habitationsLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
+  const sheltersLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
+  const roadsLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
+  const vectorsLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
+  const breachLayerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
 
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('operational');
   const [layers, setLayers] = useState<LayerVisibility>({
@@ -420,417 +76,545 @@ export default function GISMap({
     movementVectors: true,
   });
 
+  const [spatialFocus, setSpatialFocus] = useState<SpatialFocusInfo>({
+    title: 'Wayanad (Mundakkai Corridor)',
+    subtitle: 'Route R104',
+    status: routeR104Status.toUpperCase(),
+    statusColor: routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#15803d',
+  });
+
+  // Sync spatial focus with routeR104Status prop
+  useEffect(() => {
+    setSpatialFocus((prev) => ({
+      ...prev,
+      subtitle: 'Route R104',
+      status: routeR104Status.toUpperCase(),
+      statusColor: routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#15803d',
+    }));
+  }, [routeR104Status]);
+
   const toggleLayer = (layerKey: keyof LayerVisibility) => {
     setLayers((prev) => ({ ...prev, [layerKey]: !prev[layerKey] }));
   };
 
   const handleResetFocus = () => {
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: WAYANAD_CENTER,
-        zoom: INITIAL_ZOOM,
-        essential: true,
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.fitBounds(WAYANAD_BOUNDS, {
+        padding: [30, 30],
+        maxZoom: 14,
+        animate: true,
       });
     }
   };
 
-  // Helper to determine active vector GeoJSON
-  const getActiveVectorData = useCallback((type: GISMapProps['activeVectorType']): FeatureCollection => {
-    if (type === 'plan-v1-vectors') return movementVectorsV1;
-    if (type === 'plan-v1-invalidated-vector') return movementVectorsInvalidated;
-    if (type === 'plan-v2-vectors') return movementVectorsV2;
-    return emptyFeatureCollection;
+  // ---------------------------------------------------------------------------
+  // 1. TILE LAYER MANAGEMENT (Zero API Key, 100% Reliable OpenStreetMap / Free)
+  // ---------------------------------------------------------------------------
+  const getTileUrl = (mode: BasemapMode) => {
+    switch (mode) {
+      case 'satellite':
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      case 'terrain':
+        return 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+      case 'operational':
+      default:
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+  };
+
+  const getTileAttribution = (mode: BasemapMode) => {
+    switch (mode) {
+      case 'satellite':
+        return 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
+      case 'terrain':
+        return 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>';
+      case 'operational':
+      default:
+        return '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | KSDMA GIS';
+    }
+  };
+
+  // Switch basemap tiles without touching any operational layers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+    }
+
+    const newTileLayer = L.tileLayer(getTileUrl(basemapMode), {
+      attribution: getTileAttribution(basemapMode),
+      maxZoom: basemapMode === 'terrain' ? 17 : 19,
+      subdomains: basemapMode === 'satellite' ? [] : ['a', 'b', 'c'],
+    });
+
+    newTileLayer.addTo(map);
+    tileLayerRef.current = newTileLayer;
+    newTileLayer.bringToBack();
+  }, [basemapMode]);
+
+  // ---------------------------------------------------------------------------
+  // 2. LAYER SYNC FUNCTIONS (Re-populates Leaflet GeoJSON layer groups)
+  // ---------------------------------------------------------------------------
+
+  // Render Hazard Polygons
+  const updateHazardLayers = useCallback(() => {
+    const group = hazardLayerGroupRef.current;
+    group.clearLayers();
+
+    const geoJsonLayer = L.geoJSON(hazardZonesGeoJSON, {
+      style: (feature) => {
+        const severity = feature?.properties?.severity;
+        switch (severity) {
+          case 'critical':
+            return {
+              color: '#991b1b',
+              weight: 2.5,
+              opacity: 0.95,
+              fillColor: '#dc2626',
+              fillOpacity: 0.38,
+            };
+          case 'high':
+            return {
+              color: '#c2410c',
+              weight: 2.2,
+              opacity: 0.9,
+              fillColor: '#ea580c',
+              fillOpacity: 0.32,
+            };
+          case 'moderate':
+            return {
+              color: '#a16207',
+              weight: 2.0,
+              opacity: 0.85,
+              fillColor: '#ca8a04',
+              fillOpacity: 0.28,
+            };
+          case 'low':
+          default:
+            return {
+              color: '#1d4ed8',
+              weight: 1.8,
+              opacity: 0.8,
+              fillColor: '#2563eb',
+              fillOpacity: 0.22,
+            };
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        const color = p.severity === 'critical' ? '#991b1b' : p.severity === 'high' ? '#c2410c' : '#a16207';
+        
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;min-width:220px;">
+            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:${color};text-transform:uppercase;margin-bottom:2px;">
+              HAZARD SUSCEPTIBILITY ZONE
+            </div>
+            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+              ${p.name}
+            </div>
+            <div style="margin-bottom:4px;font-size:11px;">
+              <span style="color:#64748b;">Risk Level:</span> <strong style="color:${color};">${p.risk}</strong>
+            </div>
+            <div style="margin-bottom:6px;font-size:10.5px;color:#334155;background:#f8fafc;padding:5px 7px;border-radius:4px;border:1px solid #e2e8f0;">
+              <strong>Causal Factors:</strong> ${p.drivers}
+            </div>
+            <div style="font-size:9.5px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:4px;">
+              Source: ${p.source}
+            </div>
+          </div>
+        `);
+
+        layer.on('click', () => {
+          setSpatialFocus({
+            title: p.name,
+            subtitle: 'Hazard Polygon',
+            status: `${p.risk} RISK`,
+            statusColor: color,
+          });
+        });
+      },
+    });
+
+    group.addLayer(geoJsonLayer);
   }, []);
 
-  // Method to initialize and register all AEGIS operational sources and layers
-  const setupOperationalLayers = useCallback((map: maplibregl.Map) => {
-    // 1. HAZARD ZONES (Polygons + Boundaries)
-    if (!map.getSource('hazard-zones-src')) {
-      map.addSource('hazard-zones-src', { type: 'geojson', data: hazardZones });
-    }
-    if (!map.getLayer('hazard-zones-fill')) {
-      map.addLayer({
-        id: 'hazard-zones-fill',
-        type: 'fill',
-        source: 'hazard-zones-src',
-        paint: {
-          'fill-color': [
-            'match', ['get', 'severity'],
-            'critical', 'rgba(185, 28, 28, 0.35)',
-            'high', 'rgba(194, 65, 12, 0.28)',
-            'rgba(161, 98, 7, 0.22)',
-          ],
-        },
-      });
-    }
-    if (!map.getLayer('hazard-zones-line')) {
-      map.addLayer({
-        id: 'hazard-zones-line',
-        type: 'line',
-        source: 'hazard-zones-src',
-        paint: {
-          'line-color': [
-            'match', ['get', 'severity'],
-            'critical', '#991b1b',
-            'high', '#c2410c',
-            '#a16207',
-          ],
-          'line-width': 2.4,
-        },
-      });
-    }
+  // Render Habitation Markers
+  const updateHabitationLayers = useCallback(() => {
+    const group = habitationsLayerGroupRef.current;
+    group.clearLayers();
 
-    // 2. EVACUATION ROUTES (R104, R212, R318)
-    if (!map.getSource('routes-src')) {
-      map.addSource('routes-src', { type: 'geojson', data: routes });
-    }
-    if (!map.getLayer('routes-line')) {
-      map.addLayer({
-        id: 'routes-line',
-        type: 'line',
-        source: 'routes-src',
-        paint: {
-          'line-color': [
-            'case',
-            ['get', 'isR104'],
-            routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
-            '#0f294a',
-          ],
-          'line-width': [
-            'case',
-            ['get', 'isR104'],
-            routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 3.0,
-            3.0,
-          ],
-        },
-      });
-    }
+    const geoJsonLayer = L.geoJSON(habitationsGeoJSON, {
+      pointToLayer: (feature: Feature, latlng: L.LatLng) => {
+        const p = feature.properties;
+        const households = p?.households ?? 100;
+        const radius = households > 300 ? 12 : households > 150 ? 10 : 8;
+        const color = p?.risk === 'critical' ? '#b91c1c' : p?.risk === 'high' ? '#c2410c' : '#a16207';
 
-    // 3. MOVEMENT VECTORS (Simulation S5, S6/S7, S9/S10)
-    if (!map.getSource('movement-vectors-src')) {
-      map.addSource('movement-vectors-src', {
-        type: 'geojson',
-        data: getActiveVectorData(activeVectorType),
-      });
-    }
-    if (!map.getLayer('movement-vectors-line')) {
-      map.addLayer({
-        id: 'movement-vectors-line',
-        type: 'line',
-        source: 'movement-vectors-src',
-        paint: {
-          'line-color': ['coalesce', ['get', 'color'], '#15803d'],
-          'line-width': 3.6,
-        },
-      });
-    }
+        // Custom HTML Marker with pulse effect
+        const customIcon = L.divIcon({
+          className: 'aegis-habitation-marker',
+          html: `
+            <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${radius * 2}px;height:${radius * 2}px;">
+              <div style="position:absolute;width:100%;height:100%;border-radius:50%;background:${color};opacity:0.35;animation:ping 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+              <div style="width:${radius * 1.5}px;height:${radius * 1.5}px;border-radius:50%;background:${color};border:2px solid #ffffff;box-shadow:0 2px 4px rgba(0,0,0,0.35);"></div>
+            </div>
+          `,
+          iconSize: [radius * 2, radius * 2],
+          iconAnchor: [radius, radius],
+        });
 
-    // 4. S6 BREACH INCIDENT MARKER (KM 4.2 Bridge Culvert Collapse)
-    if (!map.getSource('breach-incident-src')) {
-      map.addSource('breach-incident-src', {
-        type: 'geojson',
-        data: breachIncidentPoint,
-      });
-    }
-    if (!map.getLayer('breach-incident-circle')) {
-      map.addLayer({
-        id: 'breach-incident-circle',
-        type: 'circle',
-        source: 'breach-incident-src',
-        layout: {
-          visibility: routeR104Status === 'blocked' ? 'visible' : 'none',
-        },
-        paint: {
-          'circle-radius': 12,
-          'circle-color': '#dc2626',
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 3,
-        },
-      });
-    }
-    if (!map.getLayer('breach-incident-label')) {
-      map.addLayer({
-        id: 'breach-incident-label',
-        type: 'symbol',
-        source: 'breach-incident-src',
-        layout: {
-          visibility: routeR104Status === 'blocked' ? 'visible' : 'none',
-          'text-field': '⚠ R104 BRIDGE BREACH (KM 4.2)',
-          'text-size': 10.5,
-          'text-offset': [0, -1.8],
-        },
-        paint: {
-          'text-color': '#991b1b',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 3,
-        },
-      });
-    }
+        return L.marker(latlng, { icon: customIcon });
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;min-width:210px;">
+            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#b91c1c;text-transform:uppercase;margin-bottom:2px;">
+              VULNERABLE HABITATION
+            </div>
+            <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+              ${p.name}
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Households:</span> <strong>${p.households}</strong>
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Exposed Population:</span> <strong>${p.population} persons</strong>
+            </div>
+            <div style="font-size:11px;margin-bottom:4px;">
+              <span style="color:#64748b;">Priority Action:</span> <strong style="color:#991b1b;">${p.priority}</strong>
+            </div>
+            <div style="font-size:9.5px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:4px;">
+              Terrain: ${p.terrain}
+            </div>
+          </div>
+        `);
 
-    // 5. VULNERABLE HABITATIONS (Mundakkai, Chooralmala, Attamala, Meppadi)
-    if (!map.getSource('habitations-src')) {
-      map.addSource('habitations-src', { type: 'geojson', data: habitations });
-    }
-    if (!map.getLayer('habitations-circle')) {
-      map.addLayer({
-        id: 'habitations-circle',
-        type: 'circle',
-        source: 'habitations-src',
-        paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['get', 'households'],
-            80, 8,
-            200, 11,
-            400, 14,
-          ],
-          'circle-color': [
-            'match', ['get', 'risk'],
-            'critical', '#b91c1c',
-            'high', '#c2410c',
-            '#a16207',
-          ],
-          'circle-opacity': 0.95,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2.5,
-        },
-      });
-    }
-    if (!map.getLayer('habitations-label')) {
-      map.addLayer({
-        id: 'habitations-label',
-        type: 'symbol',
-        source: 'habitations-src',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 11,
-          'text-offset': [0, -1.7],
-        },
-        paint: {
-          'text-color': '#0f172a',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.5,
-        },
-      });
-    }
+        // Add persistent label
+        layer.bindTooltip(`<strong>${p.name}</strong> (${p.population}p)`, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'aegis-map-label',
+        });
 
-    // 6. RELIEF SHELTERS (Meppadi HSS, Kalpetta Hall, St. Mary's Vythiri)
-    if (!map.getSource('shelters-src')) {
-      map.addSource('shelters-src', { type: 'geojson', data: shelters });
-    }
-    if (!map.getLayer('shelters-circle')) {
-      map.addLayer({
-        id: 'shelters-circle',
-        type: 'circle',
-        source: 'shelters-src',
-        paint: {
-          'circle-radius': 11,
-          'circle-color': '#166534',
-          'circle-opacity': 0.95,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2.5,
-        },
-      });
-    }
-    if (!map.getLayer('shelters-label')) {
-      map.addLayer({
-        id: 'shelters-label',
-        type: 'symbol',
-        source: 'shelters-src',
-        layout: {
-          'text-field': ['concat', 'SHELTER: ', ['get', 'name']],
-          'text-size': 10,
-          'text-offset': [0, 1.8],
-        },
-        paint: {
-          'text-color': '#14532d',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 2.5,
-        },
-      });
-    }
+        layer.on('click', () => {
+          setSpatialFocus({
+            title: p.name,
+            subtitle: 'Habitation Zone',
+            status: `${p.exposure} EXPOSURE`,
+            statusColor: p.risk === 'critical' ? '#b91c1c' : '#c2410c',
+          });
+        });
+      },
+    });
 
-    // 7. INTERACTIVE CLICK POPUPS
-    map.on('click', 'routes-line', (e: maplibregl.MapLayerMouseEvent) => {
-      if (!e.features?.[0]) return;
-      const p = e.features[0].properties;
-      const isR104 = p?.isR104;
-      const statusText = isR104 ? routeR104Status.toUpperCase() : (p?.status ?? 'CLEAR');
-      const color = statusText === 'BLOCKED' ? '#991b1b' : statusText === 'AT-RISK' || statusText === 'AT RISK' ? '#c2410c' : '#166534';
+    group.addLayer(geoJsonLayer);
+  }, []);
 
-      new maplibregl.Popup({ closeButton: true, maxWidth: '270px' })
-        .setLngLat(e.lngLat)
-        .setHTML(`
-          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.4;">
+  // Render Relief Shelters
+  const updateShelterLayers = useCallback(() => {
+    const group = sheltersLayerGroupRef.current;
+    group.clearLayers();
+
+    const geoJsonLayer = L.geoJSON(sheltersGeoJSON, {
+      pointToLayer: (_feature, latlng) => {
+        const customIcon = L.divIcon({
+          className: 'aegis-shelter-marker',
+          html: `
+            <div style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;background:#15803d;border:2.5px solid #ffffff;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.4);color:#ffffff;font-size:11px;font-weight:900;">
+              ⌂
+            </div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+
+        return L.marker(latlng, { icon: customIcon });
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;min-width:230px;">
+            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#15803d;text-transform:uppercase;margin-bottom:2px;">
+              DESIGNATED RELIEF SHELTER
+            </div>
+            <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+              ${p.name}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#f0fdf4;padding:6px;border-radius:4px;border:1px solid #bbf7d0;margin-bottom:6px;">
+              <div><span style="color:#166534;font-size:10px;">Total Capacity:</span><br/><strong>${p.capacity} beds</strong></div>
+              <div><span style="color:#166534;font-size:10px;">Available:</span><br/><strong style="color:#15803d;">${p.remainingCapacity} beds</strong></div>
+            </div>
+            <div style="font-size:10.5px;margin-bottom:3px;">
+              <span style="color:#64748b;">Route Link:</span> <strong>${p.routeViability}</strong>
+            </div>
+            <div style="font-size:10px;color:#475569;border-top:1px solid #e2e8f0;padding-top:4px;">
+              ${p.medicalAvailability}
+            </div>
+          </div>
+        `);
+
+        layer.bindTooltip(`<strong>SHELTER:</strong> ${p.name}`, {
+          permanent: true,
+          direction: 'bottom',
+          offset: [0, 12],
+          className: 'aegis-shelter-label',
+        });
+
+        layer.on('click', () => {
+          setSpatialFocus({
+            title: p.name,
+            subtitle: 'Relief Facility',
+            status: `${p.remainingCapacity} BEDS AVAILABLE`,
+            statusColor: '#15803d',
+          });
+        });
+      },
+    });
+
+    group.addLayer(geoJsonLayer);
+  }, []);
+
+  // Render Road Corridors (with dynamic R104 blocked/at-risk states)
+  const updateRoadLayers = useCallback(() => {
+    const group = roadsLayerGroupRef.current;
+    group.clearLayers();
+
+    const geoJsonLayer = L.geoJSON(roadsGeoJSON, {
+      style: (feature) => {
+        const isR104 = feature?.properties?.isR104;
+        if (isR104) {
+          if (routeR104Status === 'blocked') {
+            return {
+              color: '#991b1b',
+              weight: 5,
+              opacity: 0.95,
+              dashArray: '6, 8',
+            };
+          }
+          if (routeR104Status === 'at-risk') {
+            return {
+              color: '#c2410c',
+              weight: 4.2,
+              opacity: 0.9,
+              dashArray: '8, 6',
+            };
+          }
+          return {
+            color: '#0f294a',
+            weight: 3.5,
+            opacity: 0.9,
+          };
+        }
+        return {
+          color: '#0f294a',
+          weight: 3.5,
+          opacity: 0.85,
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        const isR104 = p.isR104;
+        const statusText = isR104 ? routeR104Status.toUpperCase() : p.status;
+        const color = statusText === 'BLOCKED' ? '#991b1b' : statusText === 'AT-RISK' || statusText === 'AT RISK' ? '#c2410c' : '#15803d';
+
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;min-width:230px;">
             <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#64748b;text-transform:uppercase;margin-bottom:2px;">
               EVACUATION CORRIDOR
             </div>
             <div style="font-size:13px;font-weight:800;color:${color};margin-bottom:4px;">
-              ${p?.name ?? 'Route'}
+              ${p.name}
             </div>
-            <div style="margin-bottom:4px;font-size:11px;">
+            <div style="margin-bottom:3px;font-size:11px;">
               <span style="color:#64748b;">Current Status:</span> <strong style="color:${color};">${statusText}</strong>
             </div>
-            <div style="margin-bottom:4px;font-size:11px;">
-              <span style="color:#64748b;">Dependent Population:</span> <strong>${p?.affectedPopulation ?? '0'}</strong>
+            <div style="margin-bottom:3px;font-size:11px;">
+              <span style="color:#64748b;">Dependent Population:</span> <strong>${p.affectedPopulation}</strong>
             </div>
             <div style="font-size:10px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:4px;display:flex;justify-content:space-between;">
-              <span>Verified: ${p?.lastVerification ?? 'Just now'}</span>
-              <span>${p?.source ?? 'Field Squad'}</span>
+              <span>Verified: ${p.lastVerification}</span>
+              <span>${p.source}</span>
             </div>
           </div>
-        `)
-        .addTo(map);
-    });
+        `);
 
-    map.on('click', 'habitations-circle', (e: maplibregl.MapLayerMouseEvent) => {
-      if (!e.features?.[0]) return;
-      const p = e.features[0].properties;
-      new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
-        .setLngLat(e.lngLat)
-        .setHTML(`
-          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.4;">
-            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#b91c1c;text-transform:uppercase;margin-bottom:2px;">
-              HABITATION DEMOGRAPHICS
-            </div>
-            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
-              ${p?.name}
-            </div>
-            <div style="font-size:11px;margin-bottom:2px;">
-              <span style="color:#64748b;">Households:</span> <strong>${p?.households}</strong>
-            </div>
-            <div style="font-size:11px;margin-bottom:2px;">
-              <span style="color:#64748b;">Population Exposed:</span> <strong>${p?.population} persons</strong>
-            </div>
-            <div style="font-size:11px;margin-top:4px;color:#b91c1c;font-weight:bold;">
-              Exposure Category: ${p?.exposure}
-            </div>
-          </div>
-        `)
-        .addTo(map);
-    });
-
-    map.on('click', 'shelters-circle', (e: maplibregl.MapLayerMouseEvent) => {
-      if (!e.features?.[0]) return;
-      const p = e.features[0].properties;
-      new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
-        .setLngLat(e.lngLat)
-        .setHTML(`
-          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.4;">
-            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#166534;text-transform:uppercase;margin-bottom:2px;">
-              DESIGNATED RELIEF SHELTER
-            </div>
-            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
-              ${p?.name}
-            </div>
-            <div style="font-size:11px;margin-bottom:2px;">
-              <span style="color:#64748b;">Usable Bed Capacity:</span> <strong>${p?.capacity} beds</strong>
-            </div>
-            <div style="font-size:11px;margin-bottom:2px;">
-              <span style="color:#64748b;">Route Viability:</span> <strong>${p?.routeViability}</strong>
-            </div>
-            <div style="font-size:10px;color:#64748b;margin-top:4px;border-top:1px solid #e2e8f0;padding-top:2px;">
-              ${p?.medicalAvailability}
-            </div>
-          </div>
-        `)
-        .addTo(map);
-    });
-
-    const interactiveLayers = ['hazard-zones-fill', 'habitations-circle', 'shelters-circle', 'routes-line', 'breach-incident-circle'];
-    for (const layer of interactiveLayers) {
-      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
-    }
-  }, [routeR104Status, activeVectorType, getActiveVectorData]);
-
-  // Main Map Lifecycle
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
-
-    const map = new maplibregl.Map({
-      container: mapContainer.current,
-      localIdeographFontFamily: 'sans-serif',
-      style: {
-        version: 8,
-        name: 'AEGIS Control Room Multi-Basemap Style',
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-        sources: {
-          'basemap-operational-src': {
-            type: 'raster',
-            tiles: OPERATIONAL_TILES,
-            tileSize: 256,
-            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
-          },
-          'basemap-satellite-src': {
-            type: 'raster',
-            tiles: SATELLITE_TILES,
-            tileSize: 256,
-            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
-          },
-          'basemap-terrain-src': {
-            type: 'raster',
-            tiles: TERRAIN_TILES,
-            tileSize: 256,
-            attribution: '&copy; MapTiler &copy; OpenStreetMap contributors | KSDMA GIS',
-          },
-        },
-        layers: [
-          {
-            id: 'basemap-operational-layer',
-            type: 'raster',
-            source: 'basemap-operational-src',
-            layout: { visibility: 'visible' },
-            minzoom: 0,
-            maxzoom: 20,
-          },
-          {
-            id: 'basemap-satellite-layer',
-            type: 'raster',
-            source: 'basemap-satellite-src',
-            layout: { visibility: 'none' },
-            minzoom: 0,
-            maxzoom: 19,
-          },
-          {
-            id: 'basemap-terrain-layer',
-            type: 'raster',
-            source: 'basemap-terrain-src',
-            layout: { visibility: 'none' },
-            minzoom: 0,
-            maxzoom: 19,
-          },
-        ],
+        layer.on('click', () => {
+          setSpatialFocus({
+            title: p.name,
+            subtitle: 'Evacuation Corridor',
+            status: statusText,
+            statusColor: color,
+          });
+        });
       },
+    });
+
+    group.addLayer(geoJsonLayer);
+  }, [routeR104Status]);
+
+  // Render Movement Transit Vectors (Simulation S4/S5/S7/S9/S10)
+  const updateMovementVectorLayers = useCallback(() => {
+    const group = vectorsLayerGroupRef.current;
+    group.clearLayers();
+
+    let activeData: FeatureCollection | null = null;
+    if (activeVectorType === 'plan-v1-vectors') activeData = movementVectorsV1GeoJSON;
+    else if (activeVectorType === 'plan-v1-invalidated-vector') activeData = movementVectorsInvalidatedGeoJSON;
+    else if (activeVectorType === 'plan-v2-vectors') activeData = movementVectorsV2GeoJSON;
+
+    if (!activeData || activeData.features.length === 0) return;
+
+    const geoJsonLayer = L.geoJSON(activeData, {
+      style: (feature) => {
+        const color = feature?.properties?.color || '#15803d';
+        const isSevered = activeVectorType === 'plan-v1-invalidated-vector';
+        return {
+          color: color,
+          weight: isSevered ? 5 : 4,
+          opacity: 0.95,
+          dashArray: isSevered ? '4, 6' : '6, 6',
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;">
+            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:${p.color};text-transform:uppercase;margin-bottom:2px;">
+              ${p.plan} TRANSIT VECTOR
+            </div>
+            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+              ${p.name}
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Evacuees:</span> <strong>${p.evacuees} persons</strong>
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Target Destination:</span> <strong>${p.destination}</strong>
+            </div>
+            <div style="font-size:11px;color:${p.color};font-weight:bold;margin-top:4px;">
+              Status: ${p.status}
+            </div>
+          </div>
+        `);
+      },
+    });
+
+    group.addLayer(geoJsonLayer);
+  }, [activeVectorType]);
+
+  // Render S6 Bridge Breach Failure Point
+  const updateBreachIncidentLayer = useCallback(() => {
+    const group = breachLayerGroupRef.current;
+    group.clearLayers();
+
+    if (routeR104Status !== 'blocked') return;
+
+    const geoJsonLayer = L.geoJSON(bridgeBreachIncidentGeoJSON, {
+      pointToLayer: (_feature, latlng) => {
+        const customIcon = L.divIcon({
+          className: 'aegis-breach-marker',
+          html: `
+            <div style="display:flex;align-items:center;justify-content:center;background:#991b1b;color:#ffffff;border:2.5px solid #ffffff;border-radius:50%;width:28px;height:28px;box-shadow:0 0 12px rgba(220,38,38,0.9);font-weight:900;font-size:13px;animation:bounce 1s infinite;">
+              ⚠
+            </div>
+          `,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+
+        return L.marker(latlng, { icon: customIcon });
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        if (!p) return;
+        layer.bindPopup(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;color:#0f172a;line-height:1.45;">
+            <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:#991b1b;text-transform:uppercase;margin-bottom:2px;">
+              CRITICAL INFRASTRUCTURE FAILURE
+            </div>
+            <div style="font-size:13px;font-weight:800;color:#991b1b;margin-bottom:4px;">
+              ${p.name}
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Condition:</span> <strong style="color:#991b1b;">${p.status}</strong>
+            </div>
+            <div style="font-size:11px;margin-bottom:2px;">
+              <span style="color:#64748b;">Impact:</span> <strong>${p.impact}</strong>
+            </div>
+          </div>
+        `);
+
+        layer.bindTooltip(`<strong>⚠ R104 BRIDGE BREACH (KM 4.2)</strong>`, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -14],
+          className: 'aegis-breach-label',
+        });
+      },
+    });
+
+    group.addLayer(geoJsonLayer);
+  }, [routeR104Status]);
+
+  // ---------------------------------------------------------------------------
+  // 3. MAIN LEAFLET MAP INITIALIZATION & LIFECYCLE
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    // Create Leaflet Map instance
+    const map = L.map(mapContainerRef.current, {
       center: WAYANAD_CENTER,
       zoom: INITIAL_ZOOM,
-      maxZoom: 16,
-      minZoom: 8,
+      minZoom: 9,
+      maxZoom: 18,
+      zoomControl: false, // We add custom position zoom control below
+      attributionControl: true,
     });
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 160, unit: 'metric' }), 'bottom-left');
+    // Add controls in clean positions
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
-    const handleLoad = () => {
-      setupOperationalLayers(map);
-    };
+    // Add layer groups to map
+    hazardLayerGroupRef.current.addTo(map);
+    roadsLayerGroupRef.current.addTo(map);
+    vectorsLayerGroupRef.current.addTo(map);
+    breachLayerGroupRef.current.addTo(map);
+    habitationsLayerGroupRef.current.addTo(map);
+    sheltersLayerGroupRef.current.addTo(map);
 
-    if (map.isStyleLoaded()) {
-      handleLoad();
-    } else {
-      map.once('load', handleLoad);
-    }
+    // Initial population of layers
+    updateHazardLayers();
+    updateHabitationLayers();
+    updateShelterLayers();
+    updateRoadLayers();
+    updateMovementVectorLayers();
+    updateBreachIncidentLayer();
 
-    mapRef.current = map;
+    // Initial fit bounds to Wayanad corridor
+    map.fitBounds(WAYANAD_BOUNDS, { padding: [20, 20] });
 
-    // Attach ResizeObserver to automatically resize map canvas when layout splits change
+    mapInstanceRef.current = map;
+
+    // ResizeObserver to handle container flex layout and panel collapse resizes
     let resizeObserver: ResizeObserver | null = null;
-    if (mapContainer.current) {
+    if (mapContainerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        if (mapRef.current) {
-          mapRef.current.resize();
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
         }
       });
-      resizeObserver.observe(mapContainer.current);
+      resizeObserver.observe(mapContainerRef.current);
     }
 
     return () => {
@@ -838,99 +622,120 @@ export default function GISMap({
         resizeObserver.disconnect();
       }
       map.remove();
-      mapRef.current = null;
+      mapInstanceRef.current = null;
     };
-  }, [setupOperationalLayers]);
+  }, [
+    updateHazardLayers,
+    updateHabitationLayers,
+    updateShelterLayers,
+    updateRoadLayers,
+    updateMovementVectorLayers,
+    updateBreachIncidentLayer,
+  ]);
 
-  // Update Basemap Visibility on Mode Switch (Zero style reload, zero overlay loss)
+  // Update dynamic layers when props change
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    updateRoadLayers();
+    updateBreachIncidentLayer();
+  }, [routeR104Status, updateRoadLayers, updateBreachIncidentLayer]);
 
-    if (map.getLayer('basemap-operational-layer')) {
-      map.setLayoutProperty('basemap-operational-layer', 'visibility', basemapMode === 'operational' ? 'visible' : 'none');
-    }
-    if (map.getLayer('basemap-satellite-layer')) {
-      map.setLayoutProperty('basemap-satellite-layer', 'visibility', basemapMode === 'satellite' ? 'visible' : 'none');
-    }
-    if (map.getLayer('basemap-terrain-layer')) {
-      map.setLayoutProperty('basemap-terrain-layer', 'visibility', basemapMode === 'terrain' ? 'visible' : 'none');
-    }
-  }, [basemapMode]);
-
-  // Update Route R104 Color & Breach Marker Dynamically on State Change
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    updateMovementVectorLayers();
+  }, [activeVectorType, updateMovementVectorLayers]);
 
-    if (map.getLayer('routes-line')) {
-      map.setPaintProperty('routes-line', 'line-color', [
-        'case',
-        ['get', 'isR104'],
-        routeR104Status === 'blocked' ? '#991b1b' : routeR104Status === 'at-risk' ? '#c2410c' : '#0f294a',
-        '#0f294a',
-      ]);
-
-      map.setPaintProperty('routes-line', 'line-width', [
-        'case',
-        ['get', 'isR104'],
-        routeR104Status === 'blocked' ? 4.5 : routeR104Status === 'at-risk' ? 3.8 : 3.0,
-        3.0,
-      ]);
-    }
-
-    if (map.getLayer('breach-incident-circle')) {
-      map.setLayoutProperty('breach-incident-circle', 'visibility', routeR104Status === 'blocked' ? 'visible' : 'none');
-    }
-    if (map.getLayer('breach-incident-label')) {
-      map.setLayoutProperty('breach-incident-label', 'visibility', routeR104Status === 'blocked' ? 'visible' : 'none');
-    }
-  }, [routeR104Status]);
-
-  // Update Movement Vector Data Dynamically when Simulation State changes
+  // Sync Checkbox Toggles with Layer Groups
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    const map = mapInstanceRef.current;
+    if (!map) return;
 
-    const vectorSrc = map.getSource('movement-vectors-src') as maplibregl.GeoJSONSource | undefined;
-    if (vectorSrc) {
-      vectorSrc.setData(getActiveVectorData(activeVectorType));
+    if (layers.hazardZones) {
+      if (!map.hasLayer(hazardLayerGroupRef.current)) map.addLayer(hazardLayerGroupRef.current);
+    } else {
+      if (map.hasLayer(hazardLayerGroupRef.current)) map.removeLayer(hazardLayerGroupRef.current);
     }
-  }, [activeVectorType, getActiveVectorData]);
 
-  // Sync Layer Visibility Checkboxes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (layers.habitations) {
+      if (!map.hasLayer(habitationsLayerGroupRef.current)) map.addLayer(habitationsLayerGroupRef.current);
+    } else {
+      if (map.hasLayer(habitationsLayerGroupRef.current)) map.removeLayer(habitationsLayerGroupRef.current);
+    }
 
-    if (map.getLayer('hazard-zones-fill')) {
-      map.setLayoutProperty('hazard-zones-fill', 'visibility', layers.hazardZones ? 'visible' : 'none');
-      map.setLayoutProperty('hazard-zones-line', 'visibility', layers.hazardZones ? 'visible' : 'none');
+    if (layers.shelters) {
+      if (!map.hasLayer(sheltersLayerGroupRef.current)) map.addLayer(sheltersLayerGroupRef.current);
+    } else {
+      if (map.hasLayer(sheltersLayerGroupRef.current)) map.removeLayer(sheltersLayerGroupRef.current);
     }
-    if (map.getLayer('habitations-circle')) {
-      map.setLayoutProperty('habitations-circle', 'visibility', layers.habitations ? 'visible' : 'none');
-      map.setLayoutProperty('habitations-label', 'visibility', layers.habitations ? 'visible' : 'none');
+
+    if (layers.roads) {
+      if (!map.hasLayer(roadsLayerGroupRef.current)) map.addLayer(roadsLayerGroupRef.current);
+    } else {
+      if (map.hasLayer(roadsLayerGroupRef.current)) map.removeLayer(roadsLayerGroupRef.current);
     }
-    if (map.getLayer('shelters-circle')) {
-      map.setLayoutProperty('shelters-circle', 'visibility', layers.shelters ? 'visible' : 'none');
-      map.setLayoutProperty('shelters-label', 'visibility', layers.shelters ? 'visible' : 'none');
-    }
-    if (map.getLayer('routes-line')) {
-      map.setLayoutProperty('routes-line', 'visibility', layers.roads ? 'visible' : 'none');
-    }
-    if (map.getLayer('movement-vectors-line')) {
-      map.setLayoutProperty('movement-vectors-line', 'visibility', layers.movementVectors ? 'visible' : 'none');
+
+    if (layers.movementVectors) {
+      if (!map.hasLayer(vectorsLayerGroupRef.current)) map.addLayer(vectorsLayerGroupRef.current);
+      if (!map.hasLayer(breachLayerGroupRef.current)) map.addLayer(breachLayerGroupRef.current);
+    } else {
+      if (map.hasLayer(vectorsLayerGroupRef.current)) map.removeLayer(vectorsLayerGroupRef.current);
+      if (map.hasLayer(breachLayerGroupRef.current)) map.removeLayer(breachLayerGroupRef.current);
     }
   }, [layers]);
 
   return (
-    <div className="relative w-full h-full min-h-[460px] bg-slate-100 flex flex-col">
-      <div ref={mapContainer} className="w-full h-full flex-1" />
+    <div className="relative w-full h-full min-h-[480px] bg-slate-100 flex flex-col overflow-hidden">
+      {/* Real Interactive Leaflet Container */}
+      <div ref={mapContainerRef} className="w-full h-full flex-1 z-0" />
 
-      {/* Layer Control Panel (Top-Left) */}
-      <div className="absolute top-2.5 left-2.5 bg-white/95 border border-slate-300 rounded p-2 shadow-xs text-xs z-10 min-w-[170px]">
-        <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-          GIS Layers
+      {/* Embedded CSS for clean tooltips & labels */}
+      <style>{`
+        .aegis-map-label {
+          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid #cbd5e1;
+          color: #0f172a;
+          font-family: Inter, sans-serif;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 5px;
+          border-radius: 4px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .aegis-shelter-label {
+          background: rgba(240, 253, 244, 0.95);
+          border: 1px solid #86efac;
+          color: #14532d;
+          font-family: Inter, sans-serif;
+          font-size: 9.5px;
+          font-weight: 800;
+          padding: 2px 5px;
+          border-radius: 4px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .aegis-breach-label {
+          background: rgba(254, 242, 242, 0.96);
+          border: 1px solid #f87171;
+          color: #991b1b;
+          font-family: Inter, sans-serif;
+          font-size: 9.5px;
+          font-weight: 900;
+          padding: 2px 6px;
+          border-radius: 4px;
+          box-shadow: 0 2px 4px rgba(153, 27, 27, 0.25);
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+          padding: 2px;
+        }
+        .leaflet-popup-content {
+          margin: 8px 10px;
+        }
+      `}</style>
+
+      {/* 1. GIS Layers Control Panel (Top-Left) */}
+      <div className="absolute top-2.5 left-2.5 bg-white/95 border border-slate-300 rounded p-2 shadow-xs text-xs z-[400] min-w-[170px] backdrop-blur-xs">
+        <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+          <span>GIS Layers</span>
+          <span className="text-[8px] bg-slate-100 text-slate-600 px-1 py-0.5 rounded font-mono-code">OSM</span>
         </div>
         <div className="space-y-1">
           <label className="flex items-center gap-2 cursor-pointer text-slate-800 hover:text-slate-950 text-[11px]">
@@ -938,7 +743,7 @@ export default function GISMap({
               type="checkbox"
               checked={layers.hazardZones}
               onChange={() => toggleLayer('hazardZones')}
-              className="accent-navy-800"
+              className="accent-navy-800 cursor-pointer"
             />
             <span>Hazard Zones</span>
           </label>
@@ -947,7 +752,7 @@ export default function GISMap({
               type="checkbox"
               checked={layers.habitations}
               onChange={() => toggleLayer('habitations')}
-              className="accent-navy-800"
+              className="accent-navy-800 cursor-pointer"
             />
             <span>Habitations</span>
           </label>
@@ -956,7 +761,7 @@ export default function GISMap({
               type="checkbox"
               checked={layers.shelters}
               onChange={() => toggleLayer('shelters')}
-              className="accent-navy-800"
+              className="accent-navy-800 cursor-pointer"
             />
             <span>Relief Shelters</span>
           </label>
@@ -965,7 +770,7 @@ export default function GISMap({
               type="checkbox"
               checked={layers.roads}
               onChange={() => toggleLayer('roads')}
-              className="accent-navy-800"
+              className="accent-navy-800 cursor-pointer"
             />
             <span>Road Network</span>
           </label>
@@ -974,15 +779,15 @@ export default function GISMap({
               type="checkbox"
               checked={layers.movementVectors}
               onChange={() => toggleLayer('movementVectors')}
-              className="accent-navy-800"
+              className="accent-navy-800 cursor-pointer"
             />
             <span>Movement Vectors</span>
           </label>
         </div>
       </div>
 
-      {/* Basemap Mode Switcher Control (Top-Center-Right) */}
-      <div className="absolute top-2.5 right-38 z-10 bg-white/95 border border-slate-300 rounded shadow-xs p-0.5 flex items-center gap-0.5 text-xs">
+      {/* 2. Basemap Mode Switcher Control (Top-Center-Right) */}
+      <div className="absolute top-2.5 right-40 z-[400] bg-white/95 border border-slate-300 rounded shadow-xs p-0.5 flex items-center gap-0.5 text-xs backdrop-blur-xs">
         <button
           type="button"
           onClick={() => setBasemapMode('operational')}
@@ -991,7 +796,7 @@ export default function GISMap({
               ? 'bg-navy-900 text-white shadow-xs'
               : 'text-slate-700 hover:bg-slate-100'
           }`}
-          title="Clean Operational Basemap (Roads, Settlements & Corridor Focus)"
+          title="OpenStreetMap Standard (Roads, Settlements & Corridor Focus)"
         >
           OPERATIONAL
         </button>
@@ -1003,7 +808,7 @@ export default function GISMap({
               ? 'bg-navy-900 text-white shadow-xs'
               : 'text-slate-700 hover:bg-slate-100'
           }`}
-          title="High-Resolution Satellite Imagery (Physical Terrain & Slope Detail)"
+          title="ESRI World Imagery (High-Resolution Physical Satellite)"
         >
           SATELLITE
         </button>
@@ -1015,50 +820,50 @@ export default function GISMap({
               ? 'bg-navy-900 text-white shadow-xs'
               : 'text-slate-700 hover:bg-slate-100'
           }`}
-          title="Topographic Shaded Relief (Valleys, Elevations & Contours)"
+          title="OpenTopoMap (Topographic Shaded Contours & Elevation Relief)"
         >
           TERRAIN
         </button>
       </div>
 
-      {/* Map Reset & Spatial Focus Button (Top-Right) */}
-      <div className="absolute top-2.5 right-12 z-10">
+      {/* 3. Map Reset & Spatial Focus Button (Top-Right) */}
+      <div className="absolute top-2.5 right-12 z-[400]">
         <button
           type="button"
           onClick={handleResetFocus}
-          className="px-2.5 py-1 text-[11px] font-bold bg-white/95 border border-slate-300 rounded shadow-xs text-slate-800 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+          className="px-2.5 py-1 text-[11px] font-bold bg-white/95 border border-slate-300 rounded shadow-xs text-slate-800 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer backdrop-blur-xs"
           title="Reset map view to Wayanad focus area"
         >
           <span>⌖</span> Focus Wayanad
         </button>
       </div>
 
-      {/* Movement Vector Overlay Status Banner (Top Center) */}
+      {/* 4. Movement Vector Overlay Status Banner (Top Center) */}
       {activeVectorType !== 'none' && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/95 border border-slate-300 rounded px-3 py-1 shadow-sm text-xs font-bold z-10 flex items-center gap-2">
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/95 border border-slate-300 rounded px-3 py-1 shadow-sm text-xs font-bold z-[400] flex items-center gap-2 backdrop-blur-xs">
           {activeVectorType === 'plan-v1-vectors' && (
             <span className="text-emerald-900 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
               Plan V1 Active Transit Corridors (Meppadi, Kalpetta, Vythiri)
             </span>
           )}
           {activeVectorType === 'plan-v1-invalidated-vector' && (
             <span className="text-red-900 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-600"></span>
+              <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
               ⚠ Route R104 Transit Severed — 150 Evacuee Corridor Invalidated
             </span>
           )}
           {activeVectorType === 'plan-v2-vectors' && (
             <span className="text-blue-900 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
               Plan V2 Resilient Corridors Active (Kalpetta Arterial & Vythiri Bypass)
             </span>
           )}
         </div>
       )}
 
-      {/* Operational Map Legend (Bottom-Left) */}
-      <div className="absolute bottom-2.5 left-2.5 bg-white/95 border border-slate-300 rounded p-2 shadow-xs text-xs z-10 max-w-[280px]">
+      {/* 5. Operational Map Legend (Bottom-Left) */}
+      <div className="absolute bottom-2.5 left-2.5 bg-white/95 border border-slate-300 rounded p-2 shadow-xs text-xs z-[400] max-w-[280px] backdrop-blur-xs">
         <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center justify-between">
           <span>Operational Symbology</span>
           <span className="text-[8.5px] font-mono-code text-slate-400 uppercase">{basemapMode}</span>
@@ -1073,7 +878,7 @@ export default function GISMap({
             <span>Habitation</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-800 shrink-0 border border-white"></span>
+            <span className="w-2.5 h-2.5 rounded-xs bg-emerald-800 shrink-0 border border-white text-[7px] text-white flex items-center justify-center font-bold">⌂</span>
             <span>Relief Shelter</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1081,22 +886,23 @@ export default function GISMap({
             <span>Clear Road</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-0.5 bg-orange-600 shrink-0"></span>
+            <span className="w-2.5 h-0.5 border-b border-dashed border-orange-600 shrink-0"></span>
             <span>At-Risk (R104)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-1 bg-red-800 shrink-0"></span>
+            <span className="w-2.5 h-1 border-b-2 border-dashed border-red-800 shrink-0"></span>
             <span>Blocked (R104)</span>
           </div>
         </div>
       </div>
 
-      {/* Spatial Focus Tag (Bottom-Right) */}
-      <div className="absolute bottom-2.5 right-2.5 bg-white/95 border border-slate-300 rounded px-2 py-1 shadow-xs text-right z-10">
+      {/* 6. Spatial Focus Card (Bottom-Right) */}
+      <div className="absolute bottom-2.5 right-2.5 bg-white/95 border border-slate-300 rounded px-2.5 py-1.5 shadow-xs text-right z-[400] backdrop-blur-xs min-w-[190px]">
         <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Spatial Focus</div>
-        <div className="text-[11.5px] font-extrabold text-slate-900 leading-tight">Wayanad (Mundakkai Corridor)</div>
-        <div className="text-[9.5px] text-slate-500 font-mono-code">
-          R104 Status: <strong className={routeR104Status === 'blocked' ? 'text-red-700' : routeR104Status === 'at-risk' ? 'text-orange-700' : 'text-emerald-700'}>{routeR104Status.toUpperCase()}</strong>
+        <div className="text-[11.5px] font-extrabold text-slate-900 leading-tight">{spatialFocus.title}</div>
+        <div className="text-[9.5px] text-slate-600 font-mono-code flex items-center justify-end gap-1 mt-0.5">
+          <span>{spatialFocus.subtitle}:</span>
+          <strong style={{ color: spatialFocus.statusColor }}>{spatialFocus.status}</strong>
         </div>
       </div>
     </div>
