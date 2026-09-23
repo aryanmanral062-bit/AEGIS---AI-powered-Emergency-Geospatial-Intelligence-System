@@ -1,4 +1,4 @@
-# AEGIS — AI-Powered Emergency Geospatial Intelligence System
+# AEGIS - Intelligent Dynamic Disaster Decision Support 
 
 > **Evidence-based disaster decision support for emergency planning, evacuation, and resilient response.**
 
